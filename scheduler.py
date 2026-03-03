@@ -19,8 +19,9 @@ Usage:
     defined on labeled containers.
 
 Example label format:
-    com.example.job.<jobname>.schedule = "* * * * *"
-    com.example.job.<jobname>.command = "echo hello"
+    scheduler.enable: "true"
+    scheduler.<jobname>.schedule = "* * * * *"
+    scheduler.<jobname>.command = "echo hello"
 """
 
 
@@ -53,12 +54,12 @@ time.tzset()
 logger.info("Configured timezone for job scheduling: %s", current_tz)
 
 try:
-    if not os.path.exists('/var/run/docker.sock'):
-        logger.error("Docker socket not found at /var/run/docker.sock. Exiting.")
+    if not os.environ.get('DOCKER_HOST') and not os.path.exists('/var/run/docker.sock'):
+        logger.error("Docker socket not found at /var/run/docker.sock and DOCKER_HOST is not set. Exiting.")
         sys.exit(1)
-    # Connect to Docker socket
-    docker_client = docker.DockerClient(base_url='unix://var/run/docker.sock')
+    docker_client = docker.from_env()
     docker_client.ping()
+    logger.info("Connected to Docker daemon at %s", docker_client.api.base_url)
 except Exception as e:  # pylint: disable=broad-exception-caught
     logger.error("Cannot connect to Docker daemon: %s", e)
     sys.exit(1)
@@ -176,7 +177,7 @@ def execute_job(job):
     cid = job['container_id']
     job_id = job['id']
     cont_name = job['container_name']
-    logger.info("Runnig job %s in %s", job_id, cont_name)
+    logger.info("Running job %s in %s", job_id, cont_name)
     try:
         # run via shell to support redirection/pipes
         shell_cmd = ["/bin/sh", "-c", cmd]
@@ -248,8 +249,11 @@ def watch_events():
     """
     for event in docker_client.events(decode=True, filters={"type": "container"}):
         action = event.get("Action")
-        cid = event.get("id")[:12]
-        #logger.info(f"Event {action} for container {cid}")
+        raw_id = event.get("id")
+        if not raw_id:
+            continue
+        cid = raw_id[:12]
+        # logger.info(f"Event {action} for container {cid}")
         # Attempt to fetch container; some events (destroy) may not find it
         try:
             cont = docker_client.containers.get(cid)

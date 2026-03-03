@@ -14,7 +14,7 @@ The scheduler container will read these labels and execute the defined commands 
 
 How it works:
 
- 1. When the scheduler starts, it connects to the Docker socket.
+ 1. When the scheduler starts, it connects to the Docker daemon — via the local socket by default, or via a remote host if `DOCKER_HOST` is set.
  2. Then it reads the labels of all running containers. If any containers define scheduler labels, it registers the corresponding jobs in memory and executes them according to their schedule — similar to a traditional cron.
  3. The scheduler listens to docker events. Whenever a container is started, stopped, or updated, the scheduler re-evaluates its configuration and updates the active jobs accordingly.
 
@@ -30,6 +30,8 @@ applying changes in labels (at this time 5/2025). So I decided to write my own.*
 
 If you just want to use the tool, you can pull the ready-to-use image from Docker Hub:
 
+### Option 1: Local Docker socket (default)
+
 **Standalone**
 
 ```bash
@@ -39,11 +41,7 @@ docker run -d \
   lukaskaplan/docker-scheduler
 ```
 
-This runs docker_scheduler in a container with access to the Docker socket.
-
 **... via `docker compose`**
-
-Example `docker-compose.yaml` for `docker_scheduler`:
 
 ```yaml
 services:
@@ -52,6 +50,38 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
+      TZ: Europe/Prague
+```
+
+### Option 2: Remote Docker host via `DOCKER_HOST`
+
+If the Docker daemon is running on a remote machine, set `DOCKER_HOST` instead of mounting the socket.
+
+The following environment variables are supported (same as the Docker CLI, powered by [`docker.from_env()`](https://docker-py.readthedocs.io/en/stable/client.html#docker.client.DockerClient.from_env)):
+
+| Variable | Description |
+|---|---|
+| `DOCKER_HOST` | URL to the Docker host (e.g. `tcp://remote-host:2375`) |
+| `DOCKER_TLS_VERIFY` | Verify the host against a CA certificate |
+| `DOCKER_CERT_PATH` | Path to a directory containing TLS certificates |
+
+**Standalone**
+
+```bash
+docker run -d \
+  -e DOCKER_HOST=tcp://remote-host:2375 \
+  -e TZ=Europe/Prague \
+  lukaskaplan/docker-scheduler
+```
+
+**... via `docker compose`**
+
+```yaml
+services:
+  scheduler:
+    image: lukaskaplan/docker-scheduler
+    environment:
+      DOCKER_HOST: tcp://remote-host:2375
       TZ: Europe/Prague
 ```
 
@@ -78,7 +108,7 @@ services:
     image: your-image
     labels:
       # Turn on scheduler for this container:
-      scheduler.enable: true
+      scheduler.enable: "true"
 
       # Replace <job-name> be name of the job:
       scheduler.<job-name>.schedule: "*/2 * * * *"
@@ -123,7 +153,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-4. **Build the Docker conatiner:**
+4. **Build the Docker container:**
 
 ```bash
 docker build . -t docker_scheduler
