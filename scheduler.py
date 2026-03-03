@@ -55,7 +55,9 @@ logger.info("Configured timezone for job scheduling: %s", current_tz)
 
 try:
     if not os.environ.get('DOCKER_HOST') and not os.path.exists('/var/run/docker.sock'):
-        logger.error("Docker socket not found at /var/run/docker.sock and DOCKER_HOST is not set. Exiting.")
+        logger.error(
+            "Docker socket not found at /var/run/docker.sock and DOCKER_HOST is not set. Exiting."
+        )
         sys.exit(1)
     docker_client = docker.from_env()
     docker_client.ping()
