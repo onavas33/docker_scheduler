@@ -119,6 +119,11 @@ services:
       scheduler.backup.command: "pg_dumpall -U postgres > /backup/db.sql"
       scheduler.cleanup.schedule: "0 4 * * *"
       scheduler.cleanup.command: "rm -rf /tmp/*"
+
+      # You can change the user that owns the command (like with docker exec --user <user>):
+      scheduler.touch.schedule: "0 2 * * *"
+      scheduler.touch.command: "whoami > /tmp/created_by_user_www-data"
+      scheduler.touch.user: "www-data"
 ```
 
 3. **Check logs:**
