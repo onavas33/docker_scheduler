@@ -251,7 +251,7 @@ def watch_events():
     """
     for event in docker_client.events(decode=True, filters={"type": "container"}):
         action = event.get("Action")
-        raw_id = event.get("id")
+        raw_id = event.get("Actor", {}).get("ID")
         if not raw_id:
             continue
         cid = raw_id[:12]
