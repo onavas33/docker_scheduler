@@ -131,7 +131,7 @@ def extract_raw_jobs(labels):
         if job_name not in raw_jobs:
             raw_jobs[job_name] = {}
         raw_jobs[job_name][prop] = value
-    return  raw_jobs
+    return raw_jobs
 
 
 def validate_jobs(container, raw_jobs):
@@ -188,15 +188,16 @@ def execute_job(job):
     cid = job['container_id']
     job_id = job['id']
     cont_name = job['container_name']
-    logger.info("Running job %s in %s with user %s", job_id, cont_name, user if user else "<default user>")
+    display_user = user if user else "<default user>"
+    logger.info("Running job %s in %s with user %s", job_id, cont_name, display_user)
     try:
         # run via shell to support redirection/pipes
         shell_cmd = ["/bin/sh", "-c", cmd]
         result = docker_client.containers.get(cid).exec_run(
             shell_cmd,
             tty=True,
-            user=user if user else None
-            )
+            user=user or ""
+        )
         output = result.output.decode('utf-8', errors='replace')
         exit_code = result.exit_code
         if exit_code != 0:
@@ -244,8 +245,10 @@ def sync_container(container):
             id=job["id"],
             name=f"{job['container_name']}::{job['id']}"
         )
+        display_user = job['user'] if job['user'] else "<default user>"
         logger.info(
-            "Scheduled %s: %s %s as user %s", job['id'], job['schedule'], job['command'], job['user'] if job['user'] else "<default user>"
+            "Scheduled %s: %s %s as user %s", 
+            job['id'], job['schedule'], job['command'], display_user
         )
 
 
@@ -263,7 +266,6 @@ def watch_events():
     Listen to Docker events and resync or remove jobs based on container lifecycle.
     """
     for event in docker_client.events(decode=True, filters={"type": "container"}):
-        # Debug - log all events
         action = event.get("Action")
         raw_id = event.get("id")
         if not raw_id:
