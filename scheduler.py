@@ -18,10 +18,16 @@ Usage:
     (e.g., mount /var/run/docker.sock). It will automatically detect and manage jobs
     defined on labeled containers.
 
-Example label format:
+Example label format with container default user:
     scheduler.enable: "true"
     scheduler.<jobname>.schedule = "* * * * *"
     scheduler.<jobname>.command = "echo hello"
+
+Example label format with explicit user:
+    scheduler.enable: "true"
+    scheduler.<jobname>.schedule = "* * * * *"
+    scheduler.<jobname>.command = "whoami"
+    scheduler.<jobname>.user = "nobody"
 """
 
 
@@ -101,9 +107,9 @@ def is_scheduler_enabled(container):
 
 def extract_raw_jobs(labels):
     """
-    Collect raw schedule/command pairs from scheduler.<job> labels.
+    Collect raw schedule/command/user pairs from scheduler.<job> labels.
     Returns:
-        - a dict with job names as keys and dicts with schedule and command
+        - a dict with job names as keys and dicts with schedule, command and user
         as values.
     """
     raw_jobs = {}
@@ -119,13 +125,13 @@ def extract_raw_jobs(labels):
             # parts[2] -> schedule -> save as prop
             # job_name = "backup"
             # prop = "schedule"
-        if prop not in ("schedule", "command"):
+        if prop not in ("schedule", "command", "user"):
             continue
         # Ensure a dict exists for this job_name
         if job_name not in raw_jobs:
             raw_jobs[job_name] = {}
         raw_jobs[job_name][prop] = value
-    return  raw_jobs
+    return raw_jobs
 
 
 def validate_jobs(container, raw_jobs):
@@ -142,6 +148,7 @@ def validate_jobs(container, raw_jobs):
     for job_name, props in raw_jobs.items():
         schedule = props.get("schedule")
         command = props.get("command")
+        user = props.get("user")
         if not schedule or not command:
             logger.warning(
                 "Incomplete job for %s: %s - missing schedule or command",
@@ -166,7 +173,8 @@ def validate_jobs(container, raw_jobs):
             "container_name": container.name,
             "container_id": cont_short_id,
             "schedule": schedule,
-            "command": command
+            "command": command,
+            "user": user
         })
     return jobs
 
@@ -176,14 +184,20 @@ def execute_job(job):
     Execute the command in the given container and print the output.
     """
     cmd = job['command']
+    user = job['user']
     cid = job['container_id']
     job_id = job['id']
     cont_name = job['container_name']
-    logger.info("Running job %s in %s", job_id, cont_name)
+    display_user = user if user else "<default user>"
+    logger.info("Running job %s in %s with user %s", job_id, cont_name, display_user)
     try:
         # run via shell to support redirection/pipes
         shell_cmd = ["/bin/sh", "-c", cmd]
-        result = docker_client.containers.get(cid).exec_run(shell_cmd, tty=True)
+        result = docker_client.containers.get(cid).exec_run(
+            shell_cmd,
+            tty=True,
+            user=user or ""
+        )
         output = result.output.decode('utf-8', errors='replace')
         exit_code = result.exit_code
         if exit_code != 0:
@@ -231,8 +245,10 @@ def sync_container(container):
             id=job["id"],
             name=f"{job['container_name']}::{job['id']}"
         )
+        display_user = job['user'] if job['user'] else "<default user>"
         logger.info(
-            "Scheduled %s: %s %s", job['id'], job['schedule'], job['command']
+            "Scheduled %s: %s %s as user %s", 
+            job['id'], job['schedule'], job['command'], display_user
         )
 
 
